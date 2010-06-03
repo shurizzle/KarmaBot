@@ -309,6 +309,8 @@ class KarmaBot
         end while new.length != length
         sock.close
 
+        puts "orig: " + orig.length.to_s
+        puts "new : " + new.length.to_s
         if orig != new
             puts "LA TUA VECCHIA VERSIONE È UNA MERDA!"
         end
