@@ -222,7 +222,7 @@ class KarmaBot
 
             if msg =~ /^:.+?!.+?@.+? #{@chan} :-karma [\\`\{\}\[\]\-_A-Z0-9\|\^]+\s*$/i
                 msg.scan(/-karma ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |nick|
-                    append "PRIVMSG #{@chan} :#{nick[0]}'" + (nick[0] =~ /[sz]$/i ? "s" : "") + " karma is #{@k.getKarma(nick[0])}"
+                    append "PRIVMSG #{@chan} :#{nick[0]}'" + (nick[0] !~ /[sz]$/i ? "s" : "") + " karma is #{@k.getKarma(nick[0])}"
                 }
             end
 
