@@ -1,3 +1,4 @@
+# coding: utf-8
 require 'socket'
 require 'openssl'
 require 'timeout'
@@ -5,54 +6,6 @@ require 'sqlite3'
 require 'thread'
 require 'net/ping'
 require 'getopt/std'
-
-dbname      = ENV['KB_DB']
-owner       = ENV['KB_OWNER']
-nickname    = ENV['KB_NICK']
-username    = ENV['KB_USER']
-realname    = ENV['KB_REAL']
-server      = ENV['KB_SERVER']
-port        = ENV['KB_PORT']
-channel     = ENV['KB_CHAN']
-ssl         = ENV['KB_SSL'] == "yes" ? true : false
-
-opts = Getopt::Std.getopts('d:o:n:u:r:s:p:c:S')
-
-if opts['d']
-    dbname = opts['d']
-end
-
-if opts['o']
-    owner = opts['o']
-end
-
-if opts['n']
-    nickname = opts['n']
-end
-
-if opts['u']
-    username = opts['u']
-end
-
-if opts['r']
-    realname = opts['r']
-end
-
-if opts['s']
-    server = opts['s']
-end
-
-if opts['p']
-    port = opts['p'].to_i
-end
-
-if opts['c']
-    channel = opts['c']
-end
-
-if opts['S']
-    ssl = true
-end
 
 class Socket
     def initialize(server, port, ssl = false)
@@ -337,8 +290,88 @@ class KarmaBot
         @k.close
         @dispatcher.kill
     end
+
+    def self.update
+        fp, new, orig, head = File.open(__FILE__), "", "", ""
+        until fp.eof?
+            orig += fp.gets
+        end
+        fp.close
+        sock = Socket.new "github.com", 80
+        sock.puts "GET /shurizzle/KarmaBot/raw/master/karmabot.rb HTTP/1.1\r\n"
+        sock.puts "Host: github.com\r\n\r\n"
+        begin
+            head += sock.gets
+        end until head =~ /.+?[\r]?\n[\r]?\n$/
+        length = head.scan(/Content-Length: ([0-9]+)\s/)[0][0].to_i
+        begin
+            new += sock.gets
+        end while new.length != length
+        sock.close
+
+        if orig != new
+            puts "LA TUA VECCHIA VERSIONE È UNA MERDA!"
+        end
+    end
 end
 
+dbname      = ENV['KB_DB']
+owner       = ENV['KB_OWNER']
+nickname    = ENV['KB_NICK']
+username    = ENV['KB_USER']
+realname    = ENV['KB_REAL']
+server      = ENV['KB_SERVER']
+port        = ENV['KB_PORT']
+channel     = ENV['KB_CHAN']
+ssl         = ENV['KB_SSL'] == "yes" ? true : false
+
+begin
+    opts = Getopt::Std.getopts('d:o:n:u:r:s:p:c:SU')
+rescue Exception => e
+    $stderr.puts e.to_s
+    exit
+end
+
+if opts['d']
+    dbname = opts['d']
+end
+
+if opts['o']
+    owner = opts['o']
+end
+
+if opts['n']
+    nickname = opts['n']
+end
+
+if opts['u']
+    username = opts['u']
+end
+
+if opts['r']
+    realname = opts['r']
+end
+
+if opts['s']
+    server = opts['s']
+end
+
+if opts['p']
+    port = opts['p'].to_i
+end
+
+if opts['c']
+    channel = opts['c']
+end
+
+if opts['S']
+    ssl = true
+end
+
+if opts['U']
+    KarmaBot.update
+    exit
+end
 
 begin
     bot = KarmaBot.new(dbname, owner, nickname, username, realname, server, port, channel, ssl)
