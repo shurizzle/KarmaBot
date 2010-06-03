@@ -2,7 +2,9 @@ KarmaBot
 ========
 
 KarmaBot is a little ruby-written irc bot that take note of user's karmas.
+
 --------------------
+
 How to use it?
 --------------
 
