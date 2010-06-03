@@ -309,10 +309,11 @@ class KarmaBot
         end while new.length != length
         sock.close
 
-        puts "orig: " + orig.length.to_s
-        puts "new : " + new.length.to_s
         if orig.strip != new.strip
-            puts "LA TUA VECCHIA VERSIONE E' UNA MERDA!"
+            fp = File.open(__FILE__, "w")
+            fp.write(new)
+            fp.close
+            puts "KarmaBot Updated :D"
         end
     end
 end
