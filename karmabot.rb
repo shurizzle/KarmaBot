@@ -141,9 +141,9 @@ class KarmaBot
         @nick = nick
         @owner = owner
         @q = Queue.new
-        @u = KarmaBot::Names.new(chan)
-        @k = KarmaBot::Karma.new(dbname)
-        @s = KarmaBot::Socket.new(serv, port, ssl)
+        @u = Names.new(chan)
+        @k = Karma.new(dbname)
+        @s = Socket.new(serv, port, ssl)
         dispatcher
         append "USER #{user} 0 * :#{real}"
         append "NICK #{nick}"
