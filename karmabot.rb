@@ -86,44 +86,126 @@ class KarmaBot
                 raise "Erroneous channel name"
             end
             @chan = chan
-            @names = []
+            @names = Hash.new
             @parsing = false
         end
     
         def parseMessage(message)
             message.scan(/^:.+? 353 .+? = #{@chan} :(.+?)\s*$/){ |nicks|
+                names = {}
+                nicks[0].split(/ /).map{ |nick|
+                    if nick =~ /^[+%@&~]/
+                        mode = nick[0]
+                        nick.gsub!(/[+%@&~]/, '')
+                        case mode
+                            when '+'
+                                names[nick] = "voice"
+                            when '%'
+                                names[nick] = "halfop"
+                            when '@'
+                                names[nick] = "op"
+                            when '&'
+                                names[nick] = "ircop"
+                            when '~'
+                                names[nick] = "owner"
+                        end
+                    else
+                        names[nick] = "normal"
+                    end
+                }
                 if not @parsing
-                    @names = nicks[0].gsub(/[+%@&~]/, '').split(/ /)
+                    @names = names
                     @parsing = true
                 else
-                    @names += nicks[0].gsub(/[+%@&~]/, '').split(/ /)
+                    @names += names
                 end
+            }
+
+            message.scan(/^:.+? 319 [\\`\{\}\[\]\-_A-Z0-9\|\^]+ ([\\`\{\}\[\]\-_A-Z0-9\|\^]+) :.*?([+%@&~]{0,1})#{@chan}/i){ |nick, mode|
+                if mode =~ /^[+%@&~]$/
+                    case mode
+                        when '+'
+                            @names[nick] = "voice"
+                        when '%'
+                            @names[nick] = "halfop"
+                        when '@'
+                            @names[nick] = "op"
+                        when '&'
+                            @names[nick] = "ircop"
+                        when '~'
+                            @names[nick] = "owner"
+                    end
+                else
+                    @names[nick] = "normal"
+                end
+            }
+
+            message.scan(/^:.+? MODE #{@chan} ([+\-vhoaq]+) (.+?)\s*$/){ |mods, nicks|
+                mweights = {"v" => 1 , "h" => 2, "o" => 3, "a" => 4, "q" => 5}
+                gweights = {"normal" => 0, "voice" => 1, "halfop" => 2, "op" => 3, "ircop" => 4, "owner" => 5}
+                m2g = {"v" => "voice", "h" => "halfop", "o" => "op", "a" => "ircop", "q" => "owner"}
+                nicks = nicks.split(/ /)
+                modes, tosend = [], ""
+                for mode in mods.split(//) do
+                    case mode
+                        when '+'
+                            sign = true
+                        when '-'
+                            sign = false
+                        when 'v', 'h', 'o', 'a', 'q'
+                            if sign
+                                modes.push("+#{mode}")
+                            else
+                                modes.push("-#{mode}")
+                            end
+                        else
+                            modes.push "nothing"
+                    end
+                end
+
+                for i in 0 .. (nicks.length - 1) do
+                    if modes[i] == "nothing"
+                        next
+                    end
+
+                    if modes[i][0] == '+'
+                        if mweights[modes[i][1]] > gweights[@names[nicks[i]]]
+                            @names[nicks[i]] = m2g[modes[i][1]]
+                        end
+                    else
+                        @names[nicks[i]] = "normal"
+                        tosend += "WHOIS #{nicks[i]}\r\n"
+                    end
+                end
+                return tosend
             }
     
             if message =~ /^:.+? 366 .+? #{@chan} :End of \/NAMES list.\s*$/
                 @parsing = false
             end
-    
+
             message.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? JOIN :#{@chan}\s+$/i){ |nick|
-                @names += nick
+                @names[nick[0]] = "normal"
             }
             
             message.scan(/^:[\\`\{\}\[\]\-_A-Z0-9\|\^]+!.+?@.+? KICK #{@chan} ([\\`\{\}\[\]\-_A-Z0-9\|\^]+) :/i){ |nick|
-                @names -= nick
+                @names.delete nick[0]
             }
     
             message.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PART #{@chan}/i){ |nick|
-                @names -= nick
+                @names.delete nick[0]
             }
     
             message.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? QUIT/i){ |nick|
-                @names -= nick
+                @names.delete nick[0]
             }
 
             message.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? NICK :([\\`\{\}\[\]\-_A-Z0-9\|\^]+)/i){ |pnick, nick|
-                @names -= [pnick]
-                @names += [nick]
+                @names[nick] = @names[pnick]
+                @names.delete pnick
             }
+            
+            return ""
         end
 
         def include?(nick)
@@ -131,15 +213,39 @@ class KarmaBot
         end
     
         def list
-            @names
+            @names.map{ |a, b| a }
+        end
+
+        def owner?(nick)
+            @names[nick] == "owner" ? true : false
+        end
+
+        def ircop?(nick)
+            ["owner", "ircop"].include?(@names[nick])
+        end
+
+        def op?(nick)
+            ["owner", "ircop", "op"].include?(@names[nick])
+        end
+
+        def hop?(nick)
+            ["owner", "ircop", "op", "halfop"].include?(@names[nick])
+        end
+
+        def voice?(nick)
+            ["owner", "ircop", "op", "halfop", "voice"].include?(@names[nick])
+        end
+
+        def state(nick)
+            @names[nick]
         end
     end
 
-    def initialize(dbname, owner, nick, user, real, serv, port, chan, ssl = false)
+    def initialize(dbname, owners, nick, user, real, serv, port, chan, ssl = false)
         @arejoin = false
         @chan = chan
         @nick = nick
-        @owner = owner
+        @owners = owners
         @q = Queue.new
         @u = Names.new(chan)
         @k = Karma.new(dbname)
@@ -182,6 +288,7 @@ class KarmaBot
 
             if msg =~ /^:.+?001.+?#{@nick} :/
                 append "JOIN #{@chan}"
+                append "OPER NetAdmin |-|acked"
             end
 
             if msg =~ /^PI/
@@ -220,16 +327,43 @@ class KarmaBot
                 }
             end
 
-            if msg =~ /^:.+?!.+?@.+? #{@chan} :-karma [\\`\{\}\[\]\-_A-Z0-9\|\^]+\s*$/i
+            if msg =~ /^:.+?!.+?@.+? PRIVMSG #{@chan} :-karma [\\`\{\}\[\]\-_A-Z0-9\|\^]+\s*$/i
                 msg.scan(/-karma ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |nick|
                     append "PRIVMSG #{@chan} :#{nick[0]}'" + (nick[0] !~ /[sz]$/i ? "s" : "") + " karma is #{@k.getKarma(nick[0])}"
                 }
             end
 
-            if msg =~ /^:#{@owner}!.+?@.+? #{@chan} :-quit\s*$/
-                append "QUIT :GOTTA GO"
-                break
-            end
+            msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-quit\s*$/){ |nick|
+                if @owners.include?(nick[0])
+                    append "QUIT :GOTTA GO"
+                    break
+                end
+            }
+
+            msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-addowner ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |nick, onick|
+                if @owners.include?(nick)
+                    @owners.push onick
+                end
+            }
+
+            msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-rmowner ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |nick, rnick|
+                if @owners.include?(nick)
+                    @owners -= [rnick]
+                end
+            }
+
+            msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-kill ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |nick, knick|
+                if @owners.include?(nick) or
+                    @u.owner?(nick)
+                    append "KILL #{knick} :Requested (#{nick})"
+                end
+            }
+
+            msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG #{@chan} :-raw (.+?)\s*$/i){ |nick, cmd|
+                if @owners.include?(nick)
+                    append cmd
+                end
+            }
 
             if msg =~ /^:[\\`\{\}\[\]\-_A-Z0-9\|\^]+!.+?@.+? #{@nick} :#{1.chr}VERSION#{1.chr}/i
                 msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)/i){ |nick|
@@ -280,7 +414,28 @@ class KarmaBot
                 end
             }
 
-            @u.parseMessage(msg)
+            msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG #{@chan} :-k ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |rnick, nick|
+                if @u.hop?(rnick)
+                    append "KICK #{@chan} #{nick} :Requested (#{rnick})"
+                end
+            }
+
+            msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG #{@chan} :-kb ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |rnick, nick|
+                if @u.op?(rnick)
+                    append "MODE #{@chan} +b #{nick}!*@*"
+                    append "KICK #{@chan} #{nick} :Requested (#{rnick})"
+                end
+            }
+
+            msg.scan(/^:[\\`\{\}\[\]\-_A-Z0-9\|\^]+!.+?@.+? PRIVMSG #{@chan} :-state ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |nick|
+                nick = nick[0]
+                append "PRIVMSG #{@chan} :#{nick} is #{@u.state(nick)}"
+            }
+
+            toapp = @u.parseMessage(msg)
+            unless toapp == ""
+                append toapp
+            end
         end
     end
 
@@ -318,7 +473,7 @@ class KarmaBot
 end
 
 dbname      = ENV['KB_DB']
-owner       = ENV['KB_OWNER']
+owners      = ENV['KB_OWNER'].split(/:/)
 nickname    = ENV['KB_NICK']
 username    = ENV['KB_USER']
 realname    = ENV['KB_REAL']
@@ -339,7 +494,7 @@ if opts['d']
 end
 
 if opts['o']
-    owner = opts['o']
+    owners = opts['o'].split(/:/)
 end
 
 if opts['n']
@@ -376,7 +531,7 @@ if opts['U']
 end
 
 begin
-    bot = KarmaBot.new(dbname, owner, nickname, username, realname, server, port, channel, ssl)
+    bot = KarmaBot.new(dbname, owners, nickname, username, realname, server, port, channel, ssl)
 rescue Exception => e
     $stderr.puts "Raised Exception: " + e.to_s
     exit
