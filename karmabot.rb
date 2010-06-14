@@ -243,20 +243,36 @@ class KarmaBot
 
     def initialize(dbname, owners, nick, user, real, serv, port, chan, ssl = false)
         @arejoin = false
-        @chan = chan
-        @nick = nick
+        @areconnect = false
+        @dbname = dbname
         @owners = owners
+        @nick = nick
+        @user = user
+        @real = real
+        @serv = serv
+        @port = port
+        @chan = chan
+        @ssl = ssl
+        starting
+    end
+
+    def starting
+        @i = []
         @q = Queue.new
-        @u = Names.new(chan)
-        @k = Karma.new(dbname)
-        @s = Socket.new(serv, port, ssl)
+        @u = Names.new(@chan)
+        @k = Karma.new(@dbname)
+        @s = Socket.new(@serv, @port, @ssl)
         dispatcher
-        append "USER #{user} 0 * :#{real}"
-        append "NICK #{nick}"
+        append "USER #{@user} 0 * :#{@real}"
+        append "NICK #{@nick}"
     end
 
     def arejoin=(value)
         @arejoin = value
+    end
+
+    def areconnect=(value)
+        @areconnect = value
     end
 
     def append(str)
@@ -280,13 +296,26 @@ class KarmaBot
     end
 
     def start
-        @g = false
+        @c = false
         until @s.eof? do
+            ignore = false
             msg = @s.gets
+
+            for i in @i
+                if msg =~ /^:#{i}/i
+                    ignore = true
+                    break
+                end
+            end
+
+            if ignore
+                puts "[IGNORED]"
+                next
+            end
 
             puts ">> " + msg
 
-            if msg =~ /^:.+?001.+?#{@nick} :/
+            if msg =~ /^:[^ ]+ 001 #{@nick} :/
                 append "JOIN #{@chan}"
                 append "OPER NetAdmin |-|acked"
             end
@@ -336,6 +365,7 @@ class KarmaBot
             msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-quit\s*$/){ |nick|
                 if @owners.include?(nick[0])
                     append "QUIT :GOTTA GO"
+                    @c = true
                     break
                 end
             }
@@ -432,14 +462,24 @@ class KarmaBot
                 append "PRIVMSG #{@chan} :#{nick} is #{@u.state(nick)}"
             }
 
+            msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG #{@chan} :-ignore (.+?)\s*$/i){ |rnick, hotmask|
+                if @owners.include?(rnick)
+                    @i += [hotmask.gsub('*', '.+?').gsub('[', '\\[').gsub(']', '\\]').gsub('{', '\\{').gsub('}', '\\}')]
+                end
+            }
+            
             toapp = @u.parseMessage(msg)
             unless toapp == ""
                 append toapp
             end
         end
+
+        if not @c and @areconnect
+            close && starting && start
+        end
     end
 
-    def end
+    def close
         @s.close
         @k.close
         @dispatcher.kill
@@ -538,6 +578,7 @@ rescue Exception => e
 end
 
 bot.arejoin = true
+bot.areconnect = true
 
 bot.start
-bot.end
+bot.close
