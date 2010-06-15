@@ -389,7 +389,7 @@ class KarmaBot
                 end
             }
 
-            msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG #{@chan} :-raw (.+?)\s*$/i){ |nick, cmd|
+            msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG .+? :-raw (.+?)\s*$/i){ |nick, cmd|
                 if @owners.include?(nick)
                     append cmd
                 end
@@ -446,14 +446,14 @@ class KarmaBot
 
             msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG #{@chan} :-k ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |rnick, nick|
                 if @u.hop?(rnick)
-                    append "KICK #{@chan} #{nick} :Requested (#{rnick})"
+                    append "SAPART #{nick} #{@chan} :Requested (#{rnick})"
                 end
             }
 
             msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG #{@chan} :-kb ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |rnick, nick|
                 if @u.op?(rnick)
                     append "MODE #{@chan} +b #{nick}!*@*"
-                    append "KICK #{@chan} #{nick} :Requested (#{rnick})"
+                    append "SAPART #{nick} #{@chan} :Requested (#{rnick})"
                 end
             }
 
@@ -465,6 +465,12 @@ class KarmaBot
             msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG #{@chan} :-ignore (.+?)\s*$/i){ |rnick, hotmask|
                 if @owners.include?(rnick)
                     @i += [hotmask.gsub('*', '.+?').gsub('[', '\\[').gsub(']', '\\]').gsub('{', '\\{').gsub('}', '\\}')]
+                end
+            }
+            
+            msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG #{@chan} :-say (.+?)\s*$/i){ |rnick, message|
+                if @owners.include?(rnick)
+                    append "PRIVMSG #{@chan} :#{message}"
                 end
             }
             
@@ -580,5 +586,13 @@ end
 bot.arejoin = true
 bot.areconnect = true
 
-bot.start
+require 'goto'
+
+frame_start
+begin
+    label (:start){ bot.start }
+rescue OpenSSL::SSL::SSLError
+    goto :start
+end
+frame_end
 bot.close
