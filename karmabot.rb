@@ -1,3 +1,85 @@
+def googl b
+    require 'cgi'
+    require 'timeout'
+    require 'socket'
+    require 'net/http'
+    require 'json'
+
+    def c *arguments
+        l = 0
+        arguments.each { |x|
+            l = l + x & 4294967295
+        }
+        return l
+    end
+
+    def d l
+        l = (l > 0 ? l : l + 4294967296).to_s
+        m, o, n = l, 0, false
+        ((m.length - 1) .. 0).to_a.reverse.each { |p|
+            q = m[p].to_i
+            if n
+                q *= 2
+                o += (q / 10).floor + q % 10
+            else
+                o += q
+            end
+            n = !n
+        }
+        m, o = o % 10, 0
+        if m != 0
+            o = 10 - m
+            if l.length % 2 == 1
+                if o % 2 == 1
+                    o += 9
+                end
+                o /= 2
+            end
+        end
+
+        return o.to_s + l
+    end
+
+    def e l
+        m = 5381
+        l.split(//).each { |o|
+            m = c(m << 5, m, o.ord)
+        }
+        return m
+    end
+
+    def f l
+        m = 0
+        l.split(//).each { |o|
+            m = c(o.ord, m << 6, m << 16, -m)
+        }
+        return m
+    end
+
+    def get_params b
+        i = e(b)
+        i = i >> 2 & 1073741823
+        i = i >> 4 & 67108800 | i & 63
+        i = i >> 4 & 4193280 | i & 1023
+        i = i >> 4 & 245760 | i & 16383
+        h = f(b)
+        k = (i >> 2 & 15) << 4 | h & 15
+        k |= (i >> 6 & 15) << 12 | (h >> 8 & 15) << 8
+        k |= (i >> 10 & 15) << 20 | (h >> 16 & 15) << 16
+        k |= (i >> 14 & 15) << 28 | (h >> 24 & 15) << 24
+        j = "7" + d(k)
+        return {'user' => 'toolbar@google.com',
+            'url' => b,
+            'auth_token' => j
+        }
+    end
+
+    par = get_params(b)
+    res = Net::HTTP.post_form(URI.parse("http://goo.gl/api/url"), par)
+
+    return JSON.parse res.body
+end
+
 class KarmaBot
     require 'socket'
     require 'openssl'
@@ -362,7 +444,7 @@ class KarmaBot
                 }
             end
 
-            msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-quit\s*$/){ |nick|
+            msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-quit/i){ |nick|
                 if @owners.include?(nick[0])
                     append "QUIT :GOTTA GO"
                     @c = true
@@ -383,9 +465,12 @@ class KarmaBot
             }
 
             msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-kill ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |nick, knick|
-                if @owners.include?(nick) or
-                    @u.owner?(nick)
-                    append "KILL #{knick} :Requested (#{nick})"
+                if @owners.include?(nick)
+                    if @nick != knick
+                        append "KILL #{knick} :Requested (#{nick})"
+                    end
+                else
+                    append "KILL #{nick} :GTFO BITCH!"
                 end
             }
 
@@ -473,7 +558,19 @@ class KarmaBot
                     append "PRIVMSG #{@chan} :#{message}"
                 end
             }
-            
+
+            msg.scan(/^:[\\`\{\}\[\]\-_A-Z0-9\|\^]+!.+?@.+? PRIVMSG #{@chan} :-wakawaka\s*$/i){
+                append "PRIVMSG #{@chan} :Tsamina mina, Zangalewa, Cuz this is Africa, Tsamina mina eh eh, Waka Waka eh eh, Tsamina mina zangalewa, Anawa aa, This time for Africa"
+            }
+    
+            msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG #{@chan} :-short (.+?)\s*$/i){ |rnick, url|
+                res = googl url
+                if res['short_url']
+                    append "PRIVMSG #{@chan} :#{rnick}: #{res['short_url']}"
+                else
+                    append "PRIVMSG #{@chan} :#{rnick}: Error: #{res['error_message']}"
+                end
+            }
             toapp = @u.parseMessage(msg)
             unless toapp == ""
                 append toapp
