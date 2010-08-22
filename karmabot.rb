@@ -15,8 +15,8 @@ def googl b
 
     def d l
         l = (l > 0 ? l : l + 4294967296).to_s
-        m, o, n = l, 0, false
-        ((m.length - 1) .. 0).to_a.reverse.each { |p|
+        m, o, n = l.dup, 0, false
+        (0 .. (m.length - 1)).to_a.reverse.each { |p|
             q = m[p].to_i
             if n
                 q *= 2
@@ -458,6 +458,10 @@ class KarmaBot
                 end
             }
 
+            msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-ping\s*$/i){ |nick|
+                append "PRIVMSG #{@chan} :#{nick[0]} pong"
+            }
+
             msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-rmowner ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |nick, rnick|
                 if @owners.include?(nick)
                     @owners -= [rnick]
@@ -673,22 +677,25 @@ if opts['U']
     exit
 end
 
-begin
-    bot = KarmaBot.new(dbname, owners, nickname, username, realname, server, port, channel, ssl)
-rescue Exception => e
-    $stderr.puts "Raised Exception: " + e.to_s
-    exit
-end
-
-bot.arejoin = true
-bot.areconnect = true
-
 require 'goto'
 
 frame_start
 begin
-    label (:start){ bot.start }
-rescue OpenSSL::SSL::SSLError
+    label (:start){
+        begin
+            bot = KarmaBot.new(dbname, owners, nickname, username, realname, server, port, channel, ssl)
+        rescue Exception => e
+            $stderr.puts "Raised Exception: " + e.to_s
+            exit
+        end
+        bot.arejoin = true
+        bot.areconnect = true
+        bot.start
+    }
+
+
+rescue Exception => e
+    $stderr.puts "Raised Exception: " + e.to_s
     goto :start
 end
 frame_end
