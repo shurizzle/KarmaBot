@@ -137,6 +137,7 @@ class KarmaBot
         end
     
         def increment(nick)
+            nick.downcase!
             begin
                 @db.execute("INSERT INTO karma (nick) VALUES ('#{nick}')")
             rescue SQLite3::SQLException
@@ -145,6 +146,7 @@ class KarmaBot
         end
     
         def decrement(nick)
+            nick.downcase!
             begin
                 @db.execute("INSERT INTO karma (nick) VALUES ('#{nick}')")
             rescue SQLite3::SQLException
@@ -153,6 +155,7 @@ class KarmaBot
         end
     
         def getKarma(nick)
+            nick.downcase!
             @db.get_first_value("SELECT karma FROM karma WHERE nick = '#{nick}';").to_i
         end
     
@@ -224,8 +227,8 @@ class KarmaBot
 
             message.scan(/^:.+? MODE #{@chan} ([+\-vhoaq]+) (.+?)\s*$/){ |mods, nicks|
                 mweights = {"v" => 1 , "h" => 2, "o" => 3, "a" => 4, "q" => 5}
-                gweights = {"normal" => 0, "voice" => 1, "halfop" => 2, "op" => 3, "ircop" => 4, "owner" => 5}
-                m2g = {"v" => "voice", "h" => "halfop", "o" => "op", "a" => "ircop", "q" => "owner"}
+                gweights = {"normal" => 0, "voice" => 1, "halfop" => 2, "op" => 3, "protect" => 4, "owner" => 5}
+                m2g = {"v" => "voice", "h" => "halfop", "o" => "op", "a" => "protect", "q" => "owner"}
                 nicks = nicks.split(/ /)
                 modes, tosend = [], ""
                 for mode in mods.split(//) do
@@ -303,19 +306,19 @@ class KarmaBot
         end
 
         def ircop?(nick)
-            ["owner", "ircop"].include?(@names[nick])
+            ["owner", "protect"].include?(@names[nick])
         end
 
         def op?(nick)
-            ["owner", "ircop", "op"].include?(@names[nick])
+            ["owner", "protect", "op"].include?(@names[nick])
         end
 
         def hop?(nick)
-            ["owner", "ircop", "op", "halfop"].include?(@names[nick])
+            ["owner", "protect", "op", "halfop"].include?(@names[nick])
         end
 
         def voice?(nick)
-            ["owner", "ircop", "op", "halfop", "voice"].include?(@names[nick])
+            ["owner", "protect", "op", "halfop", "voice"].include?(@names[nick])
         end
 
         def state(nick)
@@ -469,10 +472,8 @@ class KarmaBot
             }
 
             msg.scan(/^:(.+?)!.+?@.+? PRIVMSG #{@chan} :-kill ([\\`\{\}\[\]\-_A-Z0-9\|\^]+)\s*$/i){ |nick, knick|
-                if @owners.include?(nick)
-                    if @nick != knick
-                        append "KILL #{knick} :Requested (#{nick})"
-                    end
+                if @owners.include?(nick) and @nick != knick
+                    append "KILL #{knick} :Requested (#{nick})"
                 else
                     append "KILL #{nick} :GTFO BITCH!"
                 end
@@ -575,6 +576,17 @@ class KarmaBot
                     append "PRIVMSG #{@chan} :#{rnick}: Error: #{res['error_message']}"
                 end
             }
+
+            msg.scan(/^:[\\`\{\}\[\]\-_A-Z0-9\|\^]+!.+?@.+? PRIVMSG #{@chan} :-porn\s*$/i){
+                Thread.new{
+                    append "PRIVMSG #{@chan} :http://youjizz.com#{`wget http://youjizz.com/random.php -O - 2> /dev/null | grep -Eo "/videos/.*html" | head -1`}"
+                }
+            }
+
+            msg.scan(/^:([\\`\{\}\[\]\-_A-Z0-9\|\^]+)!.+?@.+? PRIVMSG .+? :vero #{Regexp.escape(@nick)}\?\s*$/i){ |nick|
+                append "PRIVMSG #{@chan} :vero #{nick[0]}!\r\n"
+            }
+
             toapp = @u.parseMessage(msg)
             unless toapp == ""
                 append toapp
@@ -677,26 +689,21 @@ if opts['U']
     exit
 end
 
-require 'goto'
-
-frame_start
 begin
-    label (:start){
-        begin
-            bot = KarmaBot.new(dbname, owners, nickname, username, realname, server, port, channel, ssl)
-        rescue Exception => e
-            $stderr.puts "Raised Exception: " + e.to_s
-            exit
-        end
-        bot.arejoin = true
-        bot.areconnect = true
-        bot.start
-    }
-
-
+    begin
+        bot = KarmaBot.new(dbname, owners, nickname, username, realname, server, port, channel, ssl)
+    rescue Exception => e
+        $stderr.puts "Raised Exception: " + e.to_s
+        exit
+    end
+    bot.arejoin = true
+    bot.areconnect = true
+    re = false
+    bot.start
 rescue Exception => e
     $stderr.puts "Raised Exception: " + e.to_s
-    goto :start
-end
-frame_end
+    bot.close
+    re = true
+end while re
+
 bot.close
